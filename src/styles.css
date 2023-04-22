@@ -1,0 +1,13 @@
+.App {
+  padding: 1rem;
+  font-family: Inter;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+.order-details {
+  min-height: 250px;
+}
