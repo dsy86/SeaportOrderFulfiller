@@ -179,7 +179,7 @@ function App() {
     <div className="App">
       <div>
         <div>
-          <h3>Seaport Contract Sandbox</h3>
+          <h3>Seaport Order Creator & Fulfiller</h3>
         </div>
         <div>
           <div>Chain ID: {currentChainId}</div>
