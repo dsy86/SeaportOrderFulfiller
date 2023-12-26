@@ -10,13 +10,13 @@ function App() {
   const [currentAddress, setCurrentAddress] = useState("");
   const [currentChainId, setCurrentChainId] = useState(1);
   const [currentOfferJson, setCurrentOfferJson] = useState(
-    localStorage.getItem("currentOfferJson")
+    localStorage.getItem("currentOfferJson"),
   );
   const [currentConsiderationJson, setCurrentConsiderationJson] = useState(
-    localStorage.getItem("currentConsiderationJson")
+    localStorage.getItem("currentConsiderationJson"),
   );
   const [currentOrder, setCurrentOrder] = useState(
-    localStorage.getItem("currentOrder") || ""
+    localStorage.getItem("currentOrder") || "",
   );
 
   const offererConduitKey = OPENSEA_CONDUIT_KEY;
@@ -44,9 +44,9 @@ function App() {
         endTime:
           "115792089237316195423570985008687907853269984665640564039457584007913129639935",
         offer: offer,
-        consideration: consideration
+        consideration: consideration,
       },
-      currentAddress
+      currentAddress,
     );
     const order = await executeAllActions();
     setCurrentOrder(JSON.stringify(order, null, 4));
@@ -60,10 +60,12 @@ function App() {
     } catch (e) {
       console.error(e);
     }
+    order.parameters.totalOriginalConsiderationItems =
+      order.parameters.consideration.length;
     const result = await bootstrapSeaport().fulfillOrder({
       order: order,
       accountAddress: currentAddress,
-      conduitKey: fulFillerConduitKey
+      conduitKey: fulFillerConduitKey,
     });
     console.info("Order result:", result);
     const transaction = result.executeAllActions();
@@ -80,12 +82,30 @@ function App() {
     const result = await bootstrapSeaport().fulfillOrders({
       fulfillOrderDetails: [{ order: order }],
       accountAddress: currentAddress,
-      conduitKey: fulFillerConduitKey
+      conduitKey: fulFillerConduitKey,
     });
     console.info("Order result:", result);
     const transaction = result.executeAllActions();
     console.log(transaction);
   };
+  function constructCounterOrder(order) {
+    const privateSaleRecipient = order.parameters.consideration[0].recipient;
+    let paymentItems = JSON.parse(
+      JSON.stringify(order.parameters.consideration),
+    );
+    paymentItems.map((consideration) => delete consideration.recipient);
+    const counterOrder = {
+      parameters: {
+        ...order.parameters,
+        offerer: privateSaleRecipient,
+        offer: paymentItems,
+        consideration: [],
+        totalOriginalConsiderationItems: 0,
+      },
+      signature: "0x",
+    };
+    return counterOrder;
+  }
 
   const matchOrders = async () => {
     let order = {};
@@ -94,30 +114,56 @@ function App() {
     } catch (e) {
       console.error(e);
     }
-    const result = await bootstrapSeaport().matchOrders({
-      orders: [order],
+    order.parameters.totalOriginalConsiderationItems =
+      order.parameters.consideration.length;
+    console.log(order);
+    console.log(currentOrder);
+    let matchOrderParameters = {
+      orders: [order, constructCounterOrder(order)],
       fulfillments: [
         {
           offerComponents: [
             {
               orderIndex: 0,
-              itemIndex: 0
-            }
+              itemIndex: 0, //1、2、3、4
+            },
           ],
           considerationComponents: [
             {
-              orderIndex: 1,
-              itemIndex: 0
-            }
-          ]
-        }
-      ]
+              orderIndex: 0,
+              itemIndex: 0, //1、2、3、4
+            },
+          ],
+        },
+      ],
+      accountAddress: order.parameters.consideration[0].recipient,
+    };
+    matchOrderParameters.fulfillments = Array(
+      order.parameters.offer.length,
+    ).fill({
+      offerComponents: [
+        {
+          orderIndex: 0,
+          itemIndex: 0, //1、2、3、4
+        },
+      ],
+      considerationComponents: [
+        {
+          orderIndex: 0,
+          itemIndex: 0, //1、2、3、4
+        },
+      ],
     });
-    result.buildTransaction({
-      gasLimit: 10000000
+    let index = 0;
+    matchOrderParameters.fulfillments.map((item) => {
+      item.offerComponents.itemIndex = ++index;
+      item.considerationComponents.itemIndex = index;
     });
-    console.info("match result:", result);
-    result.transact();
+    console.log(matchOrderParameters);
+    const transaction = await bootstrapSeaport()
+      .matchOrders(matchOrderParameters)
+      .transact();
+    const receipt = await transaction.wait();
   };
   const handleAccountsChanged = (accounts = []) => {
     if (accounts.length > 0) {
@@ -146,7 +192,9 @@ function App() {
     const usingChainId = chainId ? chainId : currentChainId;
     console.info("bootstrapSeaport: chain ID ", usingChainId);
     const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const _seaport = new Seaport(provider);
+    const _seaport = new Seaport(provider.getSigner(0), {
+      seaportVersion: "1.5",
+    });
     setSeaport(_seaport);
     return _seaport;
   };
@@ -156,7 +204,7 @@ function App() {
     window?.ethereum?.on("chainChanged", handleChainChanged);
     window?.ethereum
       ?.request({
-        method: "eth_requestAccounts"
+        method: "eth_requestAccounts",
       })
       .then((accounts) => {
         if (accounts.length > 0) {
@@ -170,7 +218,7 @@ function App() {
     return () => {
       window?.ethereum?.removeListener(
         "accountsChanged",
-        handleAccountsChanged
+        handleAccountsChanged,
       );
       window?.ethereum?.removeListener("chainChanged", handleChainChanged);
     };
